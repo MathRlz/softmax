@@ -3,6 +3,8 @@
 #include <limits>
 #include <utility>
 #include <cmath>
+#include <functional>
+#include <algorithm>
 
 using namespace std;
 
@@ -74,6 +76,65 @@ vector<float> sum(const vector<float> &arr, const vector<size_t> &dims, int axis
         result[i] = sum;
     }
     return result;
+}
+
+void sub2(vector<float> &arr, const vector<size_t> &dims, const vector<float> &vals, const std::vector<int> &axes) {
+    vector<size_t> dimCntrs(dims.size(), 0);
+    size_t dimCntr = 1;
+    for (int i = dims.size()-1; i >= 0; i--) {
+        dimCntrs[i] = dimCntr;
+        dimCntr *= dims[i];
+        cout << i << " " << dimCntrs[i] << endl;
+    }
+
+    vector<size_t> valsDims(dims.size());
+    cout << "ValDims\n";
+    for (size_t i = 0; i < valsDims.size(); i++) {
+        if (find(axes.begin(), axes.end(), i) == end(axes)) {
+            valsDims[i] = dims[i];
+        } else {
+            valsDims[i] = 1;
+        }
+        cout << valsDims[i] << " ";
+    }
+    cout <<endl;
+
+    vector<size_t> valsDimCntr(dims.size(), 0);
+    dimCntr = 1;
+    for (int i = valsDims.size() - 1; i >= 0; i--) {
+        valsDimCntr[i] = dimCntr;
+        dimCntr *= valsDims[i];
+    }
+
+
+    std::vector<size_t> pos(dims.size(), 0);
+    for (size_t i = 0; i < arr.size(); i++) {
+
+        pos[pos.size()-1] = i % dims[dims.size()-1];
+        for (size_t j = 0; j < pos.size() - 1; j++) {
+            pos[j] = (i / dimCntrs[j]) % dims[j];
+        }
+
+        cout << "Pos( ";
+        for (size_t j = 0; j < pos.size(); j++) {
+            cout << pos[j] << ", ";
+        }
+        cout << ")\n";
+
+        size_t valPos = 0;
+        for (size_t j = 0; j < pos.size(); j++) {
+            if (valsDims[j] != 1) {
+               valPos += pos[j] * valsDimCntr[j];
+            }
+        }
+            
+
+        cout << "Val pos = " << valPos << endl;
+
+        float &val = *reinterpret_cast<float*>(arr.data() + i);
+        val -= vals[valPos];
+
+    }
 }
 
 void sub(vector<float> &arr, const vector<size_t> &dims, const vector<float> &vals, int axis) {
@@ -178,6 +239,37 @@ vector<size_t> getDims(const vector<size_t> &oldDims, int axis) {
     return newDims;
 }
 
+void softmax(vector<float> &arr, const vector<size_t> &dims, const vector<int> &unsortedAxes) {
+    cout << "Array:\n";
+    printArray(arr, dims);
+    auto sortedAxes = unsortedAxes;
+    std::sort(sortedAxes.begin(), sortedAxes.end(), less<size_t>());
+    int axis = sortedAxes[0];
+    cout << "Going over axis " << axis;
+    auto reducedDims = getDims(dims, axis);
+    // Find the maximum value along each axis
+    auto maxVals = max(arr, dims, axis);
+
+    cout << "Max :\n";
+    printArray(maxVals, reducedDims);
+
+    sub2(arr, dims, maxVals, {axis});
+    cout << "Array after Substraction:\n";
+    printArray(arr, dims);
+
+    exp(arr);
+    cout << "Array after Exponentiation:\n";
+    printArray(arr, dims);
+
+    auto sumVals = sum(arr, dims, axis);
+    cout << "AX_sum:\n";
+    printArray(sumVals, reducedDims);
+
+    div(arr, dims, sumVals, axis);
+    cout << "Softmax:\n";
+    printArray(arr, dims);
+}
+
 int main() {
     // Example 3-dimensional array (replace with your own array)
     vector<float> arr = { 1, 2, 3,
@@ -193,28 +285,9 @@ int main() {
     cout << "Array:\n";
     printArray(arr, dims);
 
+    softmax(arr, dims, {0, 1});
 
-    int axis = 0;
-    cout << "Max " << axis << ":\n";
-    // Find the maximum value along each axis
-    auto maxVals = max(arr, dims, axis);
-    auto reducedDims = getDims(dims, axis);
-    printArray(maxVals, reducedDims);
-
-    cout << "Array after Substraction:\n";
-    sub(arr, dims, maxVals, axis);
-    printArray(arr, dims);
-
-    cout << "Array after Exponentiation:\n";
-    exp(arr);
-    printArray(arr, dims);
-
-    cout << "AX_sum:\n";
-    auto sumVals = sum(arr, dims, axis);
-    printArray(sumVals, reducedDims);
-
-    cout << "Softmax:\n";
-    div(arr, dims, sumVals, axis);
+    cout << "FINITO\n";
     printArray(arr, dims);
 
 
