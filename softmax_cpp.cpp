@@ -351,7 +351,7 @@ int main() {
     cout.precision(8);
     cout << scientific;
 
-    softmax(arr, dims, {0, 1});
+    softmax(arr, dims, {1, 2});
 
     // Output the maximum value along each axis
 

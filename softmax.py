@@ -10,42 +10,34 @@ def softmax(x, alpha = 1.0, axis = None):
     y = y * float(alpha)
 
     print(f'Max: {np.max(y, axis = axis)}')
+    print(f'Max expand {np.expand_dims(np.max(y, axis = axis), axis)}')
+    print(f'Y before: {y}')
     y = y - np.expand_dims(np.max(y, axis = axis), axis)
+    print(f'Y after: {y}')
 
     y = np.exp(y)
+    print(f'y exp: {y}')
 
     ax_sum = np.expand_dims(np.sum(y, axis = axis), axis)
+    print(f'ax_sum: {ax_sum}')
 
     p = y / ax_sum
+    print(f'result: {p}')
 
     if len(x.shape) == 1: p = p.flatten()
 
     return p
 
-x = np.array([[1,2], [3, 4]])
-
-output = softmax(x, 1.0, (1))
-print(output)
-
-test = np.random.rand(2, 3)
-print(test)
-reduction_axes = (0)
-print(np.max(test, axis=(0)))
-print(np.max(test, axis=(1)))
-print(np.max(test, axis=(0,1)))
-
-
-test2 = np.array([[[1, 2, 3],
+test = np.array([[[1, 2, 3],
                                          [4, 5, 6],
                                          [7, 8, 9]],
                                        
                                         [[10, 11, 12],
                                          [13, 14, 15],
                                          [16, 17, 18]],
-                                       
-                                        [[19, 20, 21],
-                                         [22, 23, 24],
-                                         [25, 26, 27]]])
-print(np.max(test2, axis=(0)))
-print(np.max(test2, axis=(1)))
-print(np.max(test2, axis=(2)))
+])
+print(test)
+
+
+result = softmax(test, 1.0, (1, 2))
+

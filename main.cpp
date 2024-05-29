@@ -26,7 +26,7 @@ __kernel void maxOverAxis(__global const float *arr, __global const int *shape, 
 
 int main() {
     // Initialize data
-    const int N = 1024;
+    const int N = 1056;
     std::vector<float> A(N, 1.0f); // Vector A with all elements 1.0
     std::vector<float> B(N, 2.0f); // Vector B with all elements 2.0
     std::vector<float> C(N, 0.0f); // Result vector C
@@ -74,7 +74,7 @@ int main() {
         queue.enqueueReadBuffer(bufferC, CL_TRUE, 0, sizeof(float) * N, C.data());
 
         // Print the results
-        for (int i = 0; i < 10; ++i) { // Print first 10 elements for verification
+        for (int i = 1024; i < 1056; ++i) { // Print first 10 elements for verification
             std::cout << C[i] << " ";
         }
         std::cout << std::endl;
