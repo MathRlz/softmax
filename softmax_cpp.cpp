@@ -7,9 +7,8 @@ using namespace std;
 
 // Function to find the maximum value along each axis
 vector<float> max(const vector<float> &arr, const vector<size_t> &dims, int axis) {
-    axis = dims.size() - 1 - axis;
     size_t stride = 1;
-    for (int i = 0; i < axis; i++) {
+    for (int i = dims.size() - 1; i > axis; i--) {
         stride *= dims[i];
     }
 
@@ -30,16 +29,13 @@ vector<float> max(const vector<float> &arr, const vector<size_t> &dims, int axis
         auto max = numeric_limits<float>::min();
         size_t startPos = (i / stride) * dimSizesUpTo + i % stride;
 
-        cout << i << " | ";
         for (size_t j = 0; j < dims[axis]; j++) {
             size_t pos = startPos + j * stride;
-            cout << pos << " ";
             float val = *reinterpret_cast<const float*>(arr.data() + pos);
             if (val > max) {
                 max = val;
             }
         }
-        cout << endl;
         result[i] = max;
     }
     return result;
@@ -48,7 +44,7 @@ vector<float> max(const vector<float> &arr, const vector<size_t> &dims, int axis
 void printArray(const vector<float> &arr, const vector<size_t> &dims) {
     vector<size_t> dimCntrs;
     size_t dimCntr=1;
-    for (size_t i = 0; i < dims.size(); i++) {
+    for (int i = dims.size()-1; i >= 0; i--) {
         dimCntr *= dims[i];
         dimCntrs.push_back(dimCntr);
     }
@@ -67,13 +63,16 @@ void printArray(const vector<float> &arr, const vector<size_t> &dims) {
 
         cout << arr[i];
 
+        bool needEndl = false;
         for (size_t j = 0; j < dimCntrs.size(); j++) {
             if (mods[j] == dimCntrs[j] - 1) {
-                cout << "]" << endl;
+                cout << "]";
+                needEndl = true;
             }
         }
 
         cout << ", ";
+        if(needEndl) cout << endl;
     }
 }
 
@@ -85,12 +84,8 @@ int main() {
                       
                         10, 11, 12,
                      13, 14, 15,
-                     16, 17, 18,
-                     
-                    19, 20, 21,
-                    22, 23, 24,
-                    25, 26, 27};
-    vector<size_t> dims = {3, 3, 3};
+                     16, 17, 18};
+    vector<size_t> dims = {2, 3, 3};
     printArray(arr, dims);
 
 
@@ -101,9 +96,14 @@ int main() {
         if (static_cast<int>(i) == axis) continue;
         newDims.push_back(dims[i]);
     }
-    printArray(max(arr, dims, 0), newDims);
-    printArray(max(arr, dims, 1), newDims);
-    printArray(max(arr, dims, 2), newDims);
+
+    cout << endl;
+    printArray(max(arr, dims, 0), vector<size_t>{3, 3});
+    cout << endl;
+    vector<size_t> newDims2{2, 3};
+    printArray(max(arr, dims, 1), newDims2);
+    cout << endl;
+    printArray(max(arr, dims, 2), newDims2);
 
 
     // Output the maximum value along each axis
