@@ -72,16 +72,39 @@ vector<size_t> getDimCntr(const vector<size_t> &dims) {
     return dimCntr;
 }
 
+float randFloat() {
+    constexpr float LO = -1000.0f;
+    constexpr float HI = 1000.0f;
+    return LO + static_cast <float> (rand()) /( static_cast <float> (RAND_MAX/(HI-LO)));
+}
+
+uint32_t flp2 (uint32_t x)
+{
+    x = x | (x >> 1);
+    x = x | (x >> 2);
+    x = x | (x >> 4);
+    x = x | (x >> 8);
+    x = x | (x >> 16);
+    return x - (x >> 1);
+}
+
 int main() {
-    const vector<size_t> dims = {2, 3, 3};
+    const vector<size_t> dims = {256*3, 1, 1};
     size_t size = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
-    vector<float> array = { 1, 2, 3,
+    //std::srand(unsigned(std::time(nullptr)));
+    std::vector<float> array(size, 1.0f);
+    array[515] = 13.0f;
+
+    //array[127] =123.4321f;
+    //std::generate(array.begin(), array.end(), randFloat);
+    /*vector<float> array = { 1, 2, 3,
                         4, 5, 6,
                         7, 8, 9,
                       
                         10, 11, 12,
                      13, 14, 15,
                      16, 17, 18};
+                     */
     const vector<int> axes = {0, 1};
     const float alpha = 1.0f;
 
@@ -89,7 +112,7 @@ int main() {
     cout << scientific;
 
     cout << "Array:\n";
-    printArray(array, dims);
+    //printArray(array, dims);
 
     auto dimCntr = getDimCntr(dims);
     auto valDimsCntr = getDimCntr(getDims(dims, axes));
@@ -109,8 +132,15 @@ int main() {
         // Create a command queue for the first device
         cl::CommandQueue queue(context, devices[0]);
 
+        size_t maxWorkGroupSize;
+        devices[0].getInfo(CL_DEVICE_MAX_WORK_GROUP_SIZE, &maxWorkGroupSize);
+
+        std::cout << "Max work group size: " << maxWorkGroupSize << std::endl;
+
         // Allocate device memory and transfer input data to device
         cl::Buffer arrBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, array.data());
+        cl::Buffer reductionBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size);
+        /*
         cl::Buffer dimsBuffer(context, dims.begin(), dims.end(), true);
         // A bit too much memory consumption
         cl::Buffer reductionBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size);
@@ -118,6 +148,7 @@ int main() {
         cl::Buffer dimCntrBuffer(context, dimCntr.begin(), dimCntr.end(), true);
         cl::Buffer valDimsCntrBuffer(context, valDimsCntr.begin(), valDimsCntr.end(), true);
         int numDims = static_cast<int>(dims.size());
+        */
 
 
         // Create and build the program
@@ -125,6 +156,48 @@ int main() {
         sources.push_back(readFile("softmax.cl"));
         cl::Program program(context, sources);
         program.build(devices);
+
+        size_t localSize = 256;
+
+        cl::Kernel reduceKernel(program, "reduce_max");
+        reduceKernel.setArg(0, static_cast<size_t>(localSize * sizeof(float)), nullptr);
+        reduceKernel.setArg(1, arrBuffer);
+        reduceKernel.setArg(2, reductionBuffer);
+        reduceKernel.setArg(3, static_cast<unsigned int>(size));
+
+        size_t tmpSize = size;
+        auto bufferToReduce = arrBuffer;
+        while (tmpSize > 1) {
+            size_t ndLocalSize = localSize;
+            size_t ndGlobalSize = tmpSize;
+
+            if (tmpSize < localSize) {
+                ndLocalSize = flp2(tmpSize);
+                ndGlobalSize = ndLocalSize * 2;
+            }
+
+
+            reduceKernel.setArg(1, bufferToReduce);
+            reduceKernel.setArg(3, static_cast<unsigned int>(tmpSize));
+            cout << "TMP size " << tmpSize << endl;
+            cout << "Global work size " << ndGlobalSize << endl;
+            cout << "Local work size " << ndLocalSize << endl;
+
+            queue.enqueueNDRangeKernel(reduceKernel, cl::NullRange, cl::NDRange(ndGlobalSize), cl::NDRange(ndLocalSize));
+            
+            bufferToReduce = reductionBuffer;
+            tmpSize = (tmpSize / ndLocalSize) + tmpSize % ndLocalSize;
+
+
+            vector<float> sumReduce(tmpSize);
+            queue.enqueueReadBuffer(reductionBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
+            for (auto val : sumReduce) {
+                cout << val << " ";
+            }
+            cout << endl;
+        }
+
+        /*
 
         { // mul
             cl::Kernel mulKernel(program, "mul");
@@ -207,6 +280,7 @@ int main() {
         cout << "Softmax:\n";
         printArray(array, dims);
         cout << endl;
+        */
 
     } catch (cl::Error& err) {
         cerr << "ERROR: " << err.what() << "(" << err.err() << ")" << endl;
