@@ -67,6 +67,16 @@ vector<size_t> getDims(const vector<size_t> &oldDims, const std::vector<int> &ax
     return newDims;
 }
 
+vector<size_t> getDimCntr(const vector<size_t> &dims) {
+    vector<size_t> dimCntr(dims.size());
+    dimCntr[dims.size()-1] = 1;
+    for (int i = dims.size()-2; i >= 0; i--) {
+        dimCntr[i] = dimCntr[i+1] * dims[i];
+    }
+    return dimCntr;
+}
+
+
 // Function to find the maximum value along each axis
 vector<float> max(const vector<float> &arr, const vector<size_t> &dims, int axis) {
     size_t stride = 1;
@@ -159,43 +169,20 @@ vector<float> sum(const vector<float> &arr, const vector<size_t> &dims, const st
 }
 
 void sub2(vector<float> &arr, const vector<size_t> &dims, const vector<float> &vals, const std::vector<int> &axes) {
-    vector<size_t> dimCntrs(dims.size(), 0);
-    size_t dimCntr = 1;
-    for (int i = dims.size()-1; i >= 0; i--) {
-        dimCntrs[i] = dimCntr;
-        dimCntr *= dims[i];
-    }
+    auto dimCntrs = getDimCntr(dims);
 
-    vector<size_t> valsDims(dims.size());
-    for (size_t i = 0; i < valsDims.size(); i++) {
-        if (find(axes.begin(), axes.end(), i) == end(axes)) {
-            valsDims[i] = dims[i];
-        } else {
-            valsDims[i] = 1;
-        }
-    }
-
-    vector<size_t> valsDimCntr(dims.size(), 0);
-    dimCntr = 1;
-    for (int i = valsDims.size() - 1; i >= 0; i--) {
-        valsDimCntr[i] = dimCntr;
-        dimCntr *= valsDims[i];
-    }
+    auto valsDims = getDims(dims, axes);
+    auto valsDimCntr = getDimCntr(valsDims);
 
     std::vector<size_t> pos(dims.size(), 0);
     for (size_t i = 0; i < arr.size(); i++) {
-        pos[pos.size()-1] = i % dims[dims.size()-1];
-        for (size_t j = 0; j < pos.size() - 1; j++) {
-            pos[j] = (i / dimCntrs[j]) % dims[j];
-        }
-
         size_t valPos = 0;
         for (size_t j = 0; j < pos.size(); j++) {
             if (valsDims[j] != 1) {
-               valPos += pos[j] * valsDimCntr[j];
+                valPos += ((i / dimCntrs[j]) % dims[j]) * valsDimCntr[j];
             }
         }
-            
+
         float &val = *reinterpret_cast<float*>(arr.data() + i);
         val -= vals[valPos];
 
@@ -203,40 +190,17 @@ void sub2(vector<float> &arr, const vector<size_t> &dims, const vector<float> &v
 }
 
 void div2(vector<float> &arr, const vector<size_t> &dims, const vector<float> &vals, const std::vector<int> &axes) {
-    vector<size_t> dimCntrs(dims.size(), 0);
-    size_t dimCntr = 1;
-    for (int i = dims.size()-1; i >= 0; i--) {
-        dimCntrs[i] = dimCntr;
-        dimCntr *= dims[i];
-    }
+    auto dimCntrs = getDimCntr(dims);
 
-    vector<size_t> valsDims(dims.size());
-    for (size_t i = 0; i < valsDims.size(); i++) {
-        if (find(axes.begin(), axes.end(), i) == end(axes)) {
-            valsDims[i] = dims[i];
-        } else {
-            valsDims[i] = 1;
-        }
-    }
-
-    vector<size_t> valsDimCntr(dims.size(), 0);
-    dimCntr = 1;
-    for (int i = valsDims.size() - 1; i >= 0; i--) {
-        valsDimCntr[i] = dimCntr;
-        dimCntr *= valsDims[i];
-    }
+    auto valsDims = getDims(dims, axes);
+    auto valsDimCntr = getDimCntr(valsDims);
 
     std::vector<size_t> pos(dims.size(), 0);
     for (size_t i = 0; i < arr.size(); i++) {
-        pos[pos.size()-1] = i % dims[dims.size()-1];
-        for (size_t j = 0; j < pos.size() - 1; j++) {
-            pos[j] = (i / dimCntrs[j]) % dims[j];
-        }
-
         size_t valPos = 0;
         for (size_t j = 0; j < pos.size(); j++) {
             if (valsDims[j] != 1) {
-               valPos += pos[j] * valsDimCntr[j];
+                valPos += ((i / dimCntrs[j] * valsDimCntr[j];
             }
         }
             
