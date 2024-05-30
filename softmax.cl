@@ -1,12 +1,5 @@
-__kernel void vector_add(__global const float* A, __global const float* B, __global float* C, int n) {
-    int id = get_global_id(0);
-    if (id < n) {
-        C[id] = A[id] + B[id];
-    }
-}
-
 __kernel void max(__global const float *arr, __global size_t *dims, __global float *results, int numDims, int axis) {
-    int id = get_global_id(0);
+    size_t id = get_global_id(0);
     
     ulong size = 1;
     for (int i = 0; i < numDims; i++) {
@@ -42,7 +35,7 @@ __kernel void max(__global const float *arr, __global size_t *dims, __global flo
 }
 
 __kernel void sum(__global const float *arr, __global size_t *dims, __global float *results, int numDims, int axis) {
-    int id = get_global_id(0);
+    size_t id = get_global_id(0);
     
     ulong size = 1;
     for (int i = 0; i < numDims; i++) {
@@ -70,7 +63,7 @@ __kernel void sum(__global const float *arr, __global size_t *dims, __global flo
     }
     // If we reuse the buffer we need a barrier
     if (arr == results) {
-        barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+        barrier(CLK_GLOBAL_MEM_FENCE);
     }
     results[id] = sum;
     dims[axis] = 1;
@@ -80,7 +73,7 @@ __kernel void sub_and_exp(__global float *arr, __global const size_t *dims,
                   __global const float *vals, __global const size_t *valDims,
                   __global const size_t *dimCntr, __global const size_t *valDimsCntr,
                   int numDims) {
-    int id = get_global_id(0);
+    size_t id = get_global_id(0);
     
     int valPos = 0;
     for (int i = 0; i < numDims; i++) {
@@ -95,7 +88,7 @@ __kernel void div(__global float *arr, __global const size_t *dims,
                   __global const float *vals, __global const size_t *valDims,
                   __global const size_t *dimCntr, __global const size_t *valDimsCntr,
                   int numDims) {
-    int id = get_global_id(0);
+    size_t id = get_global_id(0);
     
     int valPos = 0;
     for (int i = 0; i < numDims; i++) {
@@ -107,6 +100,6 @@ __kernel void div(__global float *arr, __global const size_t *dims,
 }
 
 __kernel void mul(__global float *arr, float alpha) {
-    int id = get_global_id(0);
+    size_t id = get_global_id(0);
     arr[id] *= alpha;
 }

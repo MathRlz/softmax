@@ -26,17 +26,14 @@ void printArray(const vector<float> &arr, const vector<size_t> &dims) {
         dimCntrs.push_back(dimCntr);
     }
 
-
     vector<size_t> mods(dims.size(), 0);
     for (size_t i = 0; i < arr.size(); i++) {
         for (size_t j = 0; j < dimCntrs.size(); j++) {
             mods[j] = i % dimCntrs[j];
-
             if (mods[j] == 0) {
                 cout << "[";
             }
         }
-
 
         cout << arr[i];
 
@@ -76,7 +73,6 @@ vector<size_t> getDimCntr(const vector<size_t> &dims) {
 }
 
 int main() {
-
     const vector<size_t> dims = {2, 3, 3};
     size_t size = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
     vector<float> array = { 1, 2, 3,
@@ -100,11 +96,11 @@ int main() {
     
     try {
         // Get all platforms (drivers)
-        std::vector<cl::Platform> platforms;
+        vector<cl::Platform> platforms;
         cl::Platform::get(&platforms);
 
         // Get a list of devices on this platform
-        std::vector<cl::Device> devices;
+        vector<cl::Device> devices;
         platforms[0].getDevices(CL_DEVICE_TYPE_GPU, &devices);
 
         // Create a context for the devices
@@ -128,28 +124,17 @@ int main() {
         cl::Program::Sources sources;
         sources.push_back(readFile("softmax.cl"));
         cl::Program program(context, sources);
-        try {
-            program.build(devices);
-        } catch (const cl::Error& err) {
-            if (err.err() == CL_BUILD_PROGRAM_FAILURE) {
-                for (auto& device : devices) {
-                    std::string buildLog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-                    std::cerr << "Build log for device " << device.getInfo<CL_DEVICE_NAME>() << ":\n";
-                    std::cerr << buildLog << "\n";
-                }
-            }
-            return -1;
-        }
+        program.build(devices);
 
-        { // Multiply by alpha
+        { // mul
             cl::Kernel mulKernel(program, "mul");
             mulKernel.setArg(0, arrBuffer);
             mulKernel.setArg(1, alpha);
             queue.enqueueNDRangeKernel(mulKernel, cl::NullRange, cl::NDRange(size), cl::NullRange);
         }
 
-        { // Calculate max
-            // Copy the dims to tmp Buffer
+        { // max
+            // Copy original dims
             queue.enqueueCopyBuffer(dimsBuffer, reductionDimBuffer, 0, 0, sizeof(size_t) * dims.size());
 
             cl::Kernel maxKernel(program, "max");
@@ -170,7 +155,7 @@ int main() {
             }
         }
 
-        { // Sub and exp
+        { // sub and exp
             cl::Kernel subAndExpKernel(program, "sub_and_exp");
             subAndExpKernel.setArg(0, arrBuffer);
             subAndExpKernel.setArg(1, dimsBuffer);
@@ -184,6 +169,7 @@ int main() {
         }
 
         { // sum
+            // Copy original dims
             queue.enqueueCopyBuffer(dimsBuffer, reductionDimBuffer, 0, 0, sizeof(size_t) * dims.size());
 
             cl::Kernel sumKernel(program, "sum");
@@ -204,7 +190,7 @@ int main() {
             }
         }
 
-        { // Div
+        { // div
             cl::Kernel divKernel(program, "div");
             divKernel.setArg(0, arrBuffer);
             divKernel.setArg(1, dimsBuffer);
@@ -220,11 +206,10 @@ int main() {
         queue.enqueueReadBuffer(arrBuffer, CL_TRUE, 0, sizeof(float) * size, array.data());
         cout << "Softmax:\n";
         printArray(array, dims);
-
-        std::cout << std::endl;
+        cout << endl;
 
     } catch (cl::Error& err) {
-        std::cerr << "ERROR: " << err.what() << "(" << err.err() << ")" << std::endl;
+        cerr << "ERROR: " << err.what() << "(" << err.err() << ")" << endl;
         return -1;
     }
 
