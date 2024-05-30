@@ -104,7 +104,7 @@ bool isPow2(uint32_t x) {
 }
 
 int main() {
-    const vector<size_t> dims = {512, 2, 1};
+    const vector<size_t> dims = {512, 2, 4};
     size_t size = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
     std::srand(unsigned(std::time(nullptr)));
     std::vector<float> array(size, 1.0f);
@@ -161,7 +161,6 @@ int main() {
         cl::Buffer outDimsBuffer(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
         cl::Buffer outDims2Buffer(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
         uint numDims = static_cast<uint>(dims.size());
-        uint axis = axes[0];
         /*
         cl::Buffer dimsBuffer(context, dims.begin(), dims.end(), true);
         // A bit too much memory consumption
@@ -182,15 +181,15 @@ int main() {
         size_t localSize = 256;
 
         {
-            size_t tmpSize = size;
-            size_t desiredSize = size / dims[axis];
+        size_t tmpSize = size;
+        auto inBuffer = arrBuffer;
+        auto inDims = inDimsBuffer;
+        auto outBuffer = reductionBuffer;
+        auto outDims = outDimsBuffer;
+        for (auto axis : axes) {
+            size_t desiredSize = tmpSize / dims[axis];
             size_t reducedDimSize = dims[axis];
             
-            auto inBuffer = arrBuffer;
-            auto inDims = inDimsBuffer;
-            auto outBuffer = reductionBuffer;
-            auto outDims = outDimsBuffer;
-
             cl::Kernel sumReduceKernel(program, "reduce_sum_ND");
             sumReduceKernel.setArg(6, numDims);
             sumReduceKernel.setArg(7, axis);
@@ -216,15 +215,6 @@ int main() {
                 cout << "GlobalSize " << ndGlobalSize << endl;
                 cout << "LocalSize " << ndLocalSize << endl;
                 queue.enqueueNDRangeKernel(sumReduceKernel, cl::NullRange, ndGlobalSize, ndLocalSize);
-
-                
-                vector<float> inputVec(tmpSize);
-                queue.enqueueReadBuffer(inBuffer, CL_TRUE, 0, inputVec.size() * sizeof(float), inputVec.data());
-                cout <<"Input ";
-                for (auto val : inputVec) {
-                    cout << val << " ";
-                }
-                cout <<endl;
 
                 
                 tmpSize = ndGlobalSize / ndLocalSize;
@@ -256,8 +246,8 @@ int main() {
                 outDims = (outDims == outDimsBuffer) ? outDims2Buffer : outDimsBuffer;
                 inBuffer = outBuffer;
                 outBuffer = (outBuffer == reductionBuffer) ? reductionBuffer2 : reductionBuffer;
-
             }
+        }
         }
         /*
         cl::Kernel reduceKernel(program, "reduce_sum_ND");
