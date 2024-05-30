@@ -1,3 +1,15 @@
+
+size_t next_power_of_2(size_t n) {
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+    n++;
+    return n;
+}
 __kernel void reduce_sum_ND(__local float* cache, __global float* input, __global size_t *inDims,
                             __global float* output, __global size_t *outDims,
                             const uint N, const uint numDims, const uint axis)
@@ -12,9 +24,9 @@ __kernel void reduce_sum_ND(__local float* cache, __global float* input, __globa
     if (global_id == 0) {
         for (int i = 0; i < numDims; i++) {
             if (i == axis) {
-                outDims[axis] = inDims[i] / (local_size);
+                outDims[axis] = next_power_of_2(inDims[i]) / (local_size);
                 if (outDims[axis] == 0) { 
-                    outDims[axis] = 1;
+                        outDims[axis] = 1;
                 }
             } else {
                 outDims[i] = inDims[i];
@@ -50,7 +62,62 @@ __kernel void reduce_sum_ND(__local float* cache, __global float* input, __globa
         }
         output[outPos] = cache[0];
     }
-    
+}
+
+__kernel void reduce_max_ND(__local float* cache, __global float* input, __global size_t *inDims,
+                            __global float* output, __global size_t *outDims,
+                            const uint N, const uint numDims, const uint axis)
+{
+    const uint local_id = get_local_id(0);
+    const uint global_id = get_global_id(0);
+    const uint group_id = get_group_id(0);
+    const uint local_size = get_local_size(0);
+
+    const uint num_groups = get_global_size(0) / local_size;
+
+    if (global_id == 0) {
+        for (int i = 0; i < numDims; i++) {
+            if (i == axis) {
+                outDims[axis] = inDims[i] / (local_size);
+                if (outDims[axis] == 0) { 
+                    outDims[axis] = 1;
+                }
+            } else {
+                outDims[i] = inDims[i];
+            }
+        }
+    }
+
+    ulong stride = 1;
+    for (int i = numDims - 1; i > axis; i--) {
+        stride *= inDims[i];
+    }
+
+    size_t dimSizesUpTo = stride * inDims[axis] / (num_groups * local_size);
+    size_t startPos = group_id * dimSizesUpTo;
+    size_t offset = startPos + local_id * stride;
+    cache[local_id] = (offset < N) ? input[offset] : FLT_MIN;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    for (unsigned int s = local_size >> 1; s > 0; s >>= 1) {
+        if (local_id < s) {
+            cache[local_id] = (cache[local_id] > cache[local_id + s]) ?
+                               cache[local_id] :
+                               cache[local_id + s];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    if (local_id == 0) { 
+        int outPos = 0;
+        int outDimCtr = 1;
+        for (int i = numDims-1; i >= 0; i--) {
+            size_t dimSize = (i == axis) ? inDims[i] / num_groups : inDims[i];
+            outPos += ( (group_id / outDimCtr) % dimSize ) * outDimCtr;
+            outDimCtr *= dimSize;
+            
+        }
+        output[outPos] = cache[0];
+    }
 }
 
 __kernel void reduce_sum(__local float* cache, __global float* input, __global float* output, const unsigned int N)

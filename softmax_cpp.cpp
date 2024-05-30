@@ -200,7 +200,7 @@ void div2(vector<float> &arr, const vector<size_t> &dims, const vector<float> &v
         size_t valPos = 0;
         for (size_t j = 0; j < pos.size(); j++) {
             if (valsDims[j] != 1) {
-                valPos += ((i / dimCntrs[j] * valsDimCntr[j];
+                valPos += (i / dimCntrs[j])* valsDimCntr[j];
             }
         }
             
