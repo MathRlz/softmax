@@ -50,7 +50,7 @@ void printArray(const vector<float> &arr, const vector<size_t> &dims) {
     }
 }
 
-vector<size_t> getDims(const vector<size_t> &oldDims, const vector<int> &axes) {
+vector<size_t> getDims(const vector<size_t> &oldDims, const vector<uint> &axes) {
     vector<size_t> newDims(oldDims.size());
     for (size_t i = 0; i < oldDims.size(); i++) {
         if (find(axes.begin(), axes.end(), i) == end(axes)) {
@@ -99,8 +99,12 @@ uint32_t fnp2(uint32_t x) {
     return x;
 }
 
+bool isPow2(uint32_t x) {
+    return (x & (x - 1)) == 0;
+}
+
 int main() {
-    const vector<size_t> dims = {256 * 13 * 7 * 3 * 5, 1, 1};
+    const vector<size_t> dims = {256*2, 1, 1};
     size_t size = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
     //std::srand(unsigned(std::time(nullptr)));
     std::vector<float> array(size, 1.0f);
@@ -115,7 +119,7 @@ int main() {
                      13, 14, 15,
                      16, 17, 18};
                      */
-    const vector<int> axes = {0, 1};
+    const vector<uint> axes = {0, 1};
     const float alpha = 1.0f;
 
     cout.precision(8);
@@ -150,6 +154,11 @@ int main() {
         // Allocate device memory and transfer input data to device
         cl::Buffer arrBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, array.data());
         cl::Buffer reductionBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size);
+
+        cl::Buffer inDims(context, dims.begin(), dims.end(), false);
+        cl::Buffer outDims(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
+        uint numDims = static_cast<uint>(dims.size());
+        uint axis = axes[0];
         /*
         cl::Buffer dimsBuffer(context, dims.begin(), dims.end(), true);
         // A bit too much memory consumption
@@ -169,9 +178,33 @@ int main() {
 
         size_t localSize = 256;
 
-        cl::Kernel reduceKernel(program, "reduce_sum");
+        cl::Kernel sumReduceKernel(program, "reduce_sum_ND");
+        sumReduceKernel.setArg(0, static_cast<size_t>(localSize * sizeof(float)), nullptr);
+        sumReduceKernel.setArg(1, arrBuffer);
+        sumReduceKernel.setArg(2, inDims);
+        sumReduceKernel.setArg(3, reductionBuffer);
+        sumReduceKernel.setArg(4, outDims);
+        sumReduceKernel.setArg(5, static_cast<uint>(size));
+        sumReduceKernel.setArg(6, numDims);
+        sumReduceKernel.setArg(7, axis);
+
+        cout << "Size " << size << endl;
+        size_t tmpSize = size / localSize;
+        queue.enqueueNDRangeKernel(sumReduceKernel, cl::NullRange, cl::NDRange(size), cl::NDRange(localSize));
+        
+        vector<float> sumReduce(tmpSize);
+        queue.enqueueReadBuffer(reductionBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
+        for (auto val : sumReduce) {
+            cout << val << " ";
+        }
+        cout << endl;
+        printArray(sumReduce, getDims(dims, {axis}));
+        /*
+        cl::Kernel reduceKernel(program, "reduce_sum_ND");
         reduceKernel.setArg(0, static_cast<size_t>(localSize * sizeof(float)), nullptr);
         reduceKernel.setArg(1, arrBuffer);
+        reduceKernel.setArg(2, inDims);
+
         reduceKernel.setArg(2, reductionBuffer);
         reduceKernel.setArg(3, static_cast<unsigned int>(size));
 
@@ -181,7 +214,7 @@ int main() {
         bool lastOp = false;
         while (tmpSize > 1) {
             size_t ndLocalSize = localSize;
-            size_t ndGlobalSize = fnp2(tmpSize);
+            size_t ndGlobalSize = isPow2(tmpSize) ? tmpSize : fnp2(tmpSize);
 
             if (tmpSize < localSize) {
                 ndLocalSize = flp2(tmpSize);
@@ -214,6 +247,7 @@ int main() {
             cout << endl;
 
         }
+        */
 
         /*
 

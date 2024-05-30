@@ -1,5 +1,6 @@
 __kernel void reduce_sum_ND(__local float* cache, __global float* input, __global size_t *inDims,
-                            __global float* output, __global size_t *outDims, const uint N, const uint numDims, int axis)
+                            __global float* output, __global size_t *outDims,
+                            const uint N, const uint numDims, const uint axis)
 {
     const uint local_id = get_local_id(0);
     const uint global_id = get_global_id(0);
@@ -8,9 +9,27 @@ __kernel void reduce_sum_ND(__local float* cache, __global float* input, __globa
 
     const uint num_groups = get_global_size(0) / local_size;
 
-    inDims[axis] /= num_groups;
+    if (local_id == 0) {
+        for (int i = 0; i < numDims; i++) {
+            if (i == axis) {
+                outDims[axis] = inDims[i] / num_groups;
+            } else {
+                outDims[i] = inDims[i];
+            }
+        }
+    }
+    // Global barrier and operating on global_id == 0, does not work 
+    barrier(CLK_LOCAL_MEM_FENCE);
 
-    cache[local_id] = (global_id < N) ? input[global_id] : 0.0f;
+    ulong stride = 1;
+    for (int i = numDims - 1; i > axis; i--) {
+        stride *= inDims[i];
+    }
+
+    size_t dimSizesUpTo = stride * outDims[axis];
+    size_t startPos = group_id * dimSizesUpTo;
+    size_t offset = startPos + local_id * stride;
+    cache[local_id] = (offset < N) ? input[offset] : 0.0f;
     barrier(CLK_LOCAL_MEM_FENCE);
 
     for (unsigned int s = local_size >> 1; s > 0; s >>= 1) {
@@ -20,7 +39,18 @@ __kernel void reduce_sum_ND(__local float* cache, __global float* input, __globa
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-    if (local_id == 0) output[group_id] = cache[0];
+    if (input == output) barrier(CLK_GLOBAL_MEM_FENCE);
+    
+    if (local_id == 0) { 
+        int outPos = 0;
+        int outDimCtr = 1;
+        for (int i = numDims-1; i >= 0; i--) {
+            outPos += ( (group_id / outDimCtr) % outDims[i] ) * outDimCtr;
+            outDimCtr *= outDims[i];
+        }
+        output[outPos] = cache[0];
+    }
+    
 }
 
 __kernel void reduce_sum(__local float* cache, __global float* input, __global float* output, const unsigned int N)
