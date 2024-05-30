@@ -100,7 +100,7 @@ int main() {
     printArray(array, dims);
     vector<float> resultArray(size, 0.0f);
 
-    const vector<int> axes = {1};
+    const vector<int> axes = {0};
     const auto reducedDims = getDims(dims, axes);
     size_t reducedSize = accumulate(reducedDims.begin(), reducedDims.end(), 1, multiplies<size_t>());
 
@@ -125,7 +125,8 @@ int main() {
 
         // Allocate device memory and transfer input data to device
         cl::Buffer arrBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * size, array.data());
-        cl::Buffer reductionBuffer(context, CL_MEM_READ_WRITE, reducedSize * sizeof(float));
+        // A bit too much memory consumption
+        cl::Buffer reductionBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size);
         cl::Buffer dimsBuffer(context, dims.begin(), dims.end(), true);
         cl::Buffer reducedDimBuffer(context, reducedDims.begin(), reducedDims.end(), true);
         cl::Buffer dimCntrBuffer(context, dimCntr.begin(), dimCntr.end(), true);
@@ -157,8 +158,8 @@ int main() {
         maxKernel.setArg(1, dimsBuffer);
         maxKernel.setArg(2, reductionBuffer);
         maxKernel.setArg(3, numDims);
+        
         maxKernel.setArg(4, axes[0]);
-
         cl::NDRange globalReduce(reducedSize);
         queue.enqueueNDRangeKernel(maxKernel, cl::NullRange, globalReduce, cl::NullRange);
         
@@ -179,6 +180,10 @@ int main() {
 
         cl::NDRange global(size);
         queue.enqueueNDRangeKernel(subAndExpKernel, cl::NullRange, global, cl::NullRange);
+        vector<float> subAndExpVal(size);
+        queue.enqueueReadBuffer(arrBuffer, CL_TRUE, 0, sizeof(float) * size, subAndExpVal.data());
+        cout << "Sub and exp\n";
+        printArray(subAndExpVal, dims);
 
         cl::Kernel sumKernel(program, "sum");
         sumKernel.setArg(0, arrBuffer);
