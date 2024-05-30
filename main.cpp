@@ -88,12 +88,22 @@ uint32_t flp2 (uint32_t x)
     return x - (x >> 1);
 }
 
+uint32_t fnp2(uint32_t x) {
+    x--;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    x++;
+    return x;
+}
+
 int main() {
-    const vector<size_t> dims = {256*3, 1, 1};
+    const vector<size_t> dims = {256 * 13 * 7 * 3 * 5, 1, 1};
     size_t size = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
     //std::srand(unsigned(std::time(nullptr)));
     std::vector<float> array(size, 1.0f);
-    array[515] = 13.0f;
 
     //array[127] =123.4321f;
     //std::generate(array.begin(), array.end(), randFloat);
@@ -159,7 +169,7 @@ int main() {
 
         size_t localSize = 256;
 
-        cl::Kernel reduceKernel(program, "reduce_max");
+        cl::Kernel reduceKernel(program, "reduce_sum");
         reduceKernel.setArg(0, static_cast<size_t>(localSize * sizeof(float)), nullptr);
         reduceKernel.setArg(1, arrBuffer);
         reduceKernel.setArg(2, reductionBuffer);
@@ -167,16 +177,22 @@ int main() {
 
         size_t tmpSize = size;
         auto bufferToReduce = arrBuffer;
+
+        bool lastOp = false;
         while (tmpSize > 1) {
             size_t ndLocalSize = localSize;
-            size_t ndGlobalSize = tmpSize;
+            size_t ndGlobalSize = fnp2(tmpSize);
 
             if (tmpSize < localSize) {
                 ndLocalSize = flp2(tmpSize);
                 ndGlobalSize = ndLocalSize * 2;
             }
 
+            if (tmpSize == 2) {
+                lastOp = true;
+            }
 
+            reduceKernel.setArg(0, static_cast<size_t>(ndLocalSize * sizeof(float)), nullptr);
             reduceKernel.setArg(1, bufferToReduce);
             reduceKernel.setArg(3, static_cast<unsigned int>(tmpSize));
             cout << "TMP size " << tmpSize << endl;
@@ -186,8 +202,9 @@ int main() {
             queue.enqueueNDRangeKernel(reduceKernel, cl::NullRange, cl::NDRange(ndGlobalSize), cl::NDRange(ndLocalSize));
             
             bufferToReduce = reductionBuffer;
-            tmpSize = (tmpSize / ndLocalSize) + tmpSize % ndLocalSize;
+            tmpSize = ndGlobalSize / ndLocalSize;
 
+            if (lastOp) { tmpSize = 1; }
 
             vector<float> sumReduce(tmpSize);
             queue.enqueueReadBuffer(reductionBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
@@ -195,6 +212,7 @@ int main() {
                 cout << val << " ";
             }
             cout << endl;
+
         }
 
         /*
