@@ -50,9 +50,6 @@ __kernel void reduce_sum_ND(__local float* cache, __global float* input, __globa
         for (int i = 0; i < numDims; i++) {
             if (i == axis) {
                 outDims[axis] = next_power_of_2(inDims[i]) / (local_size);
-                if (outDims[axis] == 0) { 
-                        outDims[axis] = 1;
-                }
             } else {
                 outDims[i] = inDims[i];
             }
@@ -103,10 +100,7 @@ __kernel void reduce_max_ND(__local float* cache, __global float* input, __globa
     if (global_id == 0) {
         for (int i = 0; i < numDims; i++) {
             if (i == axis) {
-                outDims[axis] = inDims[i] / (local_size);
-                if (outDims[axis] == 0) { 
-                    outDims[axis] = 1;
-                }
+                outDims[axis] = next_power_of_2(inDims[i]) / (local_size);
             } else {
                 outDims[i] = inDims[i];
             }

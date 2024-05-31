@@ -207,7 +207,7 @@ int main() {
                      16, 17, 18};
                      
                      
-    const vector<uint> axes = {1};
+    const vector<uint> axes = {2};
     const float alpha = 1.0f;
 
     cout.precision(8);
@@ -269,7 +269,7 @@ int main() {
         
 
         { // Reduce sum ND
-        cl::Kernel sumReduceKernel(program, "reduce_sum_ND");
+        cl::Kernel sumReduceKernel(program, "reduce_max_ND");
         auto result = reduceKernel(queue, sumReduceKernel, localSize, dims, axes,
                                    arrBuffer, inDimsBuffer, 
                                    reductionBuffer, reductionBuffer2,
