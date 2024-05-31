@@ -103,24 +103,110 @@ bool isPow2(uint32_t x) {
     return (x & (x - 1)) == 0;
 }
 
+cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t localSize,
+                    const std::vector<size_t> &dims, const std::vector<uint> &axes,
+                    cl::Buffer arrayIn, cl::Buffer dimsIn,
+                    cl::Buffer out1, cl::Buffer out2,
+                    cl::Buffer dims1, cl::Buffer dims2,
+                     bool printInfo = false) {
+    auto inBuffer = arrayIn;
+    auto inDims = dimsIn;
+    auto outBuffer = out1;
+    auto outDims = dims1;
+    for (auto axis : axes) {
+        size_t tmpSize = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
+        size_t reducedDimSize = dims[axis];
+        size_t reducedSize = tmpSize / reducedDimSize;
+
+        reduceKernel.setArg(6, static_cast<uint>(dims.size()));
+        reduceKernel.setArg(7, axis);
+
+        while (reducedDimSize > 1) {
+            size_t ndLocalSize = localSize;
+            size_t ndGlobalSize = isPow2(tmpSize) ? tmpSize : fnp2(tmpSize);
+
+            if (reducedDimSize < localSize) {
+                ndLocalSize = flp2(reducedDimSize);
+            }
+
+            reducedDimSize = fnp2(reducedDimSize) / ndLocalSize;
+
+            reduceKernel.setArg(0, static_cast<size_t>(ndLocalSize * sizeof(float)), nullptr);
+            reduceKernel.setArg(1, inBuffer);
+            reduceKernel.setArg(2, inDims);
+            reduceKernel.setArg(3, outBuffer);
+            reduceKernel.setArg(4, outDims);
+            reduceKernel.setArg(5, static_cast<uint>(tmpSize));
+
+            if (printInfo) {
+                cout << "Size " << tmpSize << endl
+                     << "GlobalSize " << ndGlobalSize << endl
+                     << "LocalSize " << ndLocalSize << endl;
+            }
+            queue.enqueueNDRangeKernel(reduceKernel, cl::NullRange, cl::NDRange(ndGlobalSize), cl::NDRange(ndLocalSize));
+
+
+            if (printInfo) {
+                cout << "tmpSize " << tmpSize << endl;
+            }
+
+            if (printInfo) {
+                vector<size_t> outDimsVec(dims.size());
+                queue.enqueueReadBuffer(outDims, CL_TRUE, 0, outDimsVec.size() * sizeof(size_t), outDimsVec.data());
+                cout << "Dims out: ";
+                for (auto dim : outDimsVec) {
+                    cout << dim << " ";
+                }
+                cout << endl;
+
+                vector<float> sumReduce(tmpSize);
+                queue.enqueueReadBuffer(outBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
+                for (auto val : sumReduce) {
+                    cout << val << " ";
+                }
+                cout << endl;
+            }
+            // NEEDS TO BE UP
+            tmpSize = ndGlobalSize / ndLocalSize;
+            tmpSize = reducedSize * reducedDimSize;
+
+            inDims = outDims;
+            outDims = (outDims == dims1) ? dims2 : dims1;
+            inBuffer = outBuffer;
+            outBuffer = (outBuffer == out1) ? out2 : out1;
+        }
+        if (printInfo) {
+            vector<float> sumReduce(tmpSize);
+            queue.enqueueReadBuffer(inBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
+            for (auto val : sumReduce) {
+                cout << val << " ";
+            }
+            cout << endl;
+        }
+    }
+    return inBuffer;
+}
+
 int main() {
-    const vector<size_t> dims = {512, 2, 4};
+    const vector<size_t> dims = {2, 3, 3};
     size_t size = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
     std::srand(unsigned(std::time(nullptr)));
-    std::vector<float> array(size, 1.0f);
+    //std::vector<float> array(size, 1.0f);
+
+    //array[14] = 11.0f;
 
     //array[127] =123.4321f;
     //std::generate(array.begin(), array.end(), randFloat);
-    /*vector<float> array = { 1, 2, 3,
+    vector<float> array = { 1, 2, 3,
                         4, 5, 6,
                         7, 8, 9,
                       
                         10, 11, 12,
                      13, 14, 15,
                      16, 17, 18};
-                     */
                      
-    const vector<uint> axes = {0, 1};
+                     
+    const vector<uint> axes = {2};
     const float alpha = 1.0f;
 
     cout.precision(8);
@@ -160,7 +246,6 @@ int main() {
         cl::Buffer inDimsBuffer(context, dims.begin(), dims.end(), false);
         cl::Buffer outDimsBuffer(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
         cl::Buffer outDims2Buffer(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
-        uint numDims = static_cast<uint>(dims.size());
         /*
         cl::Buffer dimsBuffer(context, dims.begin(), dims.end(), true);
         // A bit too much memory consumption
@@ -180,75 +265,28 @@ int main() {
 
         size_t localSize = 256;
 
-        {
-        size_t tmpSize = size;
-        auto inBuffer = arrBuffer;
-        auto inDims = inDimsBuffer;
-        auto outBuffer = reductionBuffer;
-        auto outDims = outDimsBuffer;
-        for (auto axis : axes) {
-            size_t desiredSize = tmpSize / dims[axis];
-            size_t reducedDimSize = dims[axis];
-            
-            cl::Kernel sumReduceKernel(program, "reduce_sum_ND");
-            sumReduceKernel.setArg(6, numDims);
-            sumReduceKernel.setArg(7, axis);
+        
 
-            while (reducedDimSize > 1) {
-                size_t ndLocalSize = localSize;
-                size_t ndGlobalSize = isPow2(tmpSize) ? tmpSize : fnp2(tmpSize);
-
-                if (tmpSize < localSize) {
-                    ndLocalSize = flp2(reducedDimSize);
-                }
-                
-                reducedDimSize /= ndLocalSize;
-
-                sumReduceKernel.setArg(0, static_cast<size_t>(localSize * sizeof(float)), nullptr);
-                sumReduceKernel.setArg(1, inBuffer);
-                sumReduceKernel.setArg(2, inDims);
-                sumReduceKernel.setArg(3, outBuffer);
-                sumReduceKernel.setArg(4, outDims);
-                sumReduceKernel.setArg(5, static_cast<uint>(tmpSize));
-
-                cout << "Size " << tmpSize << endl;
-                cout << "GlobalSize " << ndGlobalSize << endl;
-                cout << "LocalSize " << ndLocalSize << endl;
-                queue.enqueueNDRangeKernel(sumReduceKernel, cl::NullRange, ndGlobalSize, ndLocalSize);
-
-                
-                tmpSize = ndGlobalSize / ndLocalSize;
-
-                vector<float> sumReduce(tmpSize);
-                queue.enqueueReadBuffer(outBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
-                for (auto val : sumReduce) {
-                    cout << val << " ";
-                }
-                cout << endl;
-                printArray(sumReduce, getDims(dims, {axis}));
-
-                vector<size_t> outDimsVec(dims.size());
-                queue.enqueueReadBuffer(outDims, CL_TRUE, 0, outDimsVec.size() * sizeof(size_t), outDimsVec.data());
-                cout << "Dims: ";
-                for (auto dim : outDimsVec) {
-                    cout << dim << " ";
-                }
-                cout << endl;
-                vector<size_t> inDimsVec(dims.size());
-                queue.enqueueReadBuffer(inDims, CL_TRUE, 0, inDimsVec.size() * sizeof(size_t), inDimsVec.data());
-                cout << "In Dims: ";
-                for (auto dim : inDimsVec) {
-                    cout << dim << " ";
-                }
-                cout << endl;
-                
-                inDims = outDims;
-                outDims = (outDims == outDimsBuffer) ? outDims2Buffer : outDimsBuffer;
-                inBuffer = outBuffer;
-                outBuffer = (outBuffer == reductionBuffer) ? reductionBuffer2 : reductionBuffer;
-            }
+        { // Reduce sum ND
+        cl::Kernel sumReduceKernel(program, "reduce_sum_ND");
+        auto result = reduceKernel(queue, sumReduceKernel, localSize, dims, axes,
+                                   arrBuffer, inDimsBuffer, 
+                                   reductionBuffer, reductionBuffer2,
+                                   outDimsBuffer, outDims2Buffer, true);
         }
+
+        /*
+        cout << "Reduce max:\n";
+        { // Reduce max ND
+        cl::Kernel maxReduceKernel(program, "reduce_max_ND");
+        auto result = reduceKernel(queue, maxReduceKernel, localSize, dims, axes,
+                                   arrBuffer, inDimsBuffer, 
+                                   reductionBuffer, reductionBuffer2,
+                                   outDimsBuffer, outDims2Buffer, true);
         }
+        */
+
+
         /*
         cl::Kernel reduceKernel(program, "reduce_sum_ND");
         reduceKernel.setArg(0, static_cast<size_t>(localSize * sizeof(float)), nullptr);

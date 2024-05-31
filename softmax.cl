@@ -39,10 +39,18 @@ __kernel void reduce_sum_ND(__local float* cache, __global float* input, __globa
         stride *= inDims[i];
     }
 
-    size_t dimSizesUpTo = stride * inDims[axis] / (num_groups * local_size);
-    size_t startPos = group_id * dimSizesUpTo;
-    size_t offset = startPos + local_id * stride;
-    cache[local_id] = (offset < N) ? input[offset] : 0.0f;
+
+    size_t partSize = next_power_of_2(inDims[axis]) / local_size;
+    size_t partNo = group_id % partSize;
+
+    size_t dimension = group_id / partSize;
+
+    size_t dimSizesUpTo = stride * inDims[axis];
+    size_t startPos = (dimension / stride) * dimSizesUpTo + dimension % stride;
+
+    size_t localOffsetPos = partNo * local_size + local_id;
+    size_t offset = startPos + localOffsetPos * stride;
+    cache[local_id] = (localOffsetPos < inDims[axis]) ? input[offset] : 0.0f;
     barrier(CLK_LOCAL_MEM_FENCE);
     for (unsigned int s = local_size >> 1; s > 0; s >>= 1) {
         if (local_id < s) {
@@ -93,10 +101,17 @@ __kernel void reduce_max_ND(__local float* cache, __global float* input, __globa
         stride *= inDims[i];
     }
 
-    size_t dimSizesUpTo = stride * inDims[axis] / (num_groups * local_size);
-    size_t startPos = group_id * dimSizesUpTo;
-    size_t offset = startPos + local_id * stride;
-    cache[local_id] = (offset < N) ? input[offset] : FLT_MIN;
+    size_t partSize = next_power_of_2(inDims[axis]) / local_size;
+    size_t partNo = group_id % partSize;
+
+    size_t dimension = group_id / partSize;
+
+    size_t dimSizesUpTo = stride * inDims[axis];
+    size_t startPos = (dimension / stride) * dimSizesUpTo + dimension % stride;
+
+    size_t localOffsetPos = partNo * local_size + local_id;
+    size_t offset = startPos + localOffsetPos * stride;
+    cache[local_id] = (localOffsetPos < inDims[axis]) ? input[offset] : FLT_MIN;
     barrier(CLK_LOCAL_MEM_FENCE);
     for (unsigned int s = local_size >> 1; s > 0; s >>= 1) {
         if (local_id < s) {
