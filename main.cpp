@@ -103,7 +103,12 @@ bool isPow2(uint32_t x) {
     return (x & (x - 1)) == 0;
 }
 
-cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t localSize,
+struct ReduceResultT {
+    cl::Buffer buffer;
+    cl::Buffer dims;
+};
+
+ReduceResultT runReduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t localSize,
                     const std::vector<size_t> &dims, const std::vector<uint> &axes,
                     cl::Buffer arrayIn, cl::Buffer dimsIn,
                     cl::Buffer out1, cl::Buffer out2,
@@ -185,8 +190,47 @@ cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t 
             cout << endl;
         }
     }
-    return inBuffer;
+    return {inBuffer, inDims};
 }
+
+void runMulKernel(cl::CommandQueue queue, cl::Kernel mulKernel, cl::Buffer buffer, size_t size, float alpha) {
+    mulKernel.setArg(0, buffer);
+    mulKernel.setArg(1, alpha);
+    queue.enqueueNDRangeKernel(mulKernel, cl::NullRange, cl::NDRange(size), cl::NullRange);
+}
+
+void runSubAndExpKernel(cl::CommandQueue queue, cl::Kernel subAndExpKernel,
+                        cl::Buffer arrBuffer, cl::Buffer dimsBuffer,
+                        cl::Buffer reductionBuffer, cl::Buffer reductionDimBuffer,
+                        cl::Buffer dimCntrBuffer, cl::Buffer valDimsCntrBuffer,
+                        uint numDims, size_t size) {
+    subAndExpKernel.setArg(0, arrBuffer);
+    subAndExpKernel.setArg(1, dimsBuffer);
+    subAndExpKernel.setArg(2, reductionBuffer);
+    subAndExpKernel.setArg(3, reductionDimBuffer);
+    subAndExpKernel.setArg(4, dimCntrBuffer);
+    subAndExpKernel.setArg(5, valDimsCntrBuffer);
+    subAndExpKernel.setArg(6, numDims);
+
+    queue.enqueueNDRangeKernel(subAndExpKernel, cl::NullRange, cl::NDRange(size), cl::NullRange);
+}
+
+void runDivKernel(cl::CommandQueue queue, cl::Kernel divKernel,
+                        cl::Buffer arrBuffer, cl::Buffer dimsBuffer,
+                        cl::Buffer reductionBuffer, cl::Buffer reductionDimBuffer,
+                        cl::Buffer dimCntrBuffer, cl::Buffer valDimsCntrBuffer,
+                        uint numDims, size_t size) {
+    divKernel.setArg(0, arrBuffer);
+    divKernel.setArg(1, dimsBuffer);
+    divKernel.setArg(2, reductionBuffer);
+    divKernel.setArg(3, reductionDimBuffer);
+    divKernel.setArg(4, dimCntrBuffer);
+    divKernel.setArg(5, valDimsCntrBuffer);
+    divKernel.setArg(6, numDims);
+
+    queue.enqueueNDRangeKernel(divKernel, cl::NullRange, cl::NDRange(size), cl::NullRange);
+}
+
 
 int main() {
     const vector<size_t> dims = {2, 3, 3};
@@ -207,7 +251,7 @@ int main() {
                      16, 17, 18};
                      
                      
-    const vector<uint> axes = {2};
+    const vector<uint> axes = {0};
     const float alpha = 1.0f;
 
     cout.precision(8);
@@ -247,16 +291,9 @@ int main() {
         cl::Buffer inDimsBuffer(context, dims.begin(), dims.end(), false);
         cl::Buffer outDimsBuffer(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
         cl::Buffer outDims2Buffer(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
-        /*
-        cl::Buffer dimsBuffer(context, dims.begin(), dims.end(), true);
-        // A bit too much memory consumption
-        cl::Buffer reductionBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size);
-        cl::Buffer reductionDimBuffer(context, CL_MEM_READ_WRITE, sizeof(size_t) * dims.size());
         cl::Buffer dimCntrBuffer(context, dimCntr.begin(), dimCntr.end(), true);
-        cl::Buffer valDimsCntrBuffer(context, valDimsCntr.begin(), valDimsCntr.end(), true);
+        cl::Buffer valDimCntrBuffer(context, valDimsCntr.begin(), valDimsCntr.end(), true);
         int numDims = static_cast<int>(dims.size());
-        */
-
 
         // Create and build the program
         cl::Program::Sources sources;
@@ -266,15 +303,34 @@ int main() {
 
         size_t localSize = 256;
 
-        
+        cl::Kernel maxReduceKernel(program, "reduce_max_ND");
+        cl::Kernel sumReduceKernel(program, "reduce_sum_ND");
+        cl::Kernel mulKernel(program, "mul");
+        cl::Kernel subAndExpKernel(program, "sub_and_exp");
+        cl::Kernel divKernel(program, "div");
 
-        { // Reduce sum ND
-        cl::Kernel sumReduceKernel(program, "reduce_max_ND");
-        auto result = reduceKernel(queue, sumReduceKernel, localSize, dims, axes,
-                                   arrBuffer, inDimsBuffer, 
-                                   reductionBuffer, reductionBuffer2,
-                                   outDimsBuffer, outDims2Buffer, true);
-        }
+        runMulKernel(queue, mulKernel, arrBuffer, size, alpha);
+        auto [maxRedBuffer, maxRedDims] = runReduceKernel(queue, maxReduceKernel, localSize, dims, axes,
+                                arrBuffer, inDimsBuffer, 
+                                reductionBuffer, reductionBuffer2,
+                                outDimsBuffer, outDims2Buffer, true);
+        runSubAndExpKernel(queue, subAndExpKernel, arrBuffer, inDimsBuffer,
+                           maxRedBuffer, maxRedDims,
+                           dimCntrBuffer, valDimCntrBuffer, numDims, size);
+        auto [sumRedBuffer, sumRedDims] = runReduceKernel(queue, sumReduceKernel, localSize, dims, axes,
+                                arrBuffer, inDimsBuffer,
+                                reductionBuffer, reductionBuffer2,
+                                outDimsBuffer, outDims2Buffer, false);
+        runDivKernel(queue, divKernel, arrBuffer, inDimsBuffer,
+                            maxRedBuffer, maxRedDims,
+                            dimCntrBuffer, valDimCntrBuffer, numDims, size);
+
+        // Read back the result from the device to host
+        queue.enqueueReadBuffer(arrBuffer, CL_TRUE, 0, sizeof(float) * size, array.data());
+        cout << "Softmax:\n";
+        printArray(array, dims);
+        cout << endl;
+                        
 
         /*
         cout << "Reduce max:\n";
