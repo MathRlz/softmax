@@ -108,11 +108,12 @@ cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t 
                     cl::Buffer arrayIn, cl::Buffer dimsIn,
                     cl::Buffer out1, cl::Buffer out2,
                     cl::Buffer dims1, cl::Buffer dims2,
-                     bool printInfo = false) {
+                    bool printInfo = false) {
     auto inBuffer = arrayIn;
     auto inDims = dimsIn;
     auto outBuffer = out1;
     auto outDims = dims1;
+    auto tmpDims = dims;
     for (auto axis : axes) {
         size_t tmpSize = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
         size_t reducedDimSize = dims[axis];
@@ -131,6 +132,9 @@ cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t 
 
             reducedDimSize = fnp2(reducedDimSize) / ndLocalSize;
 
+            tmpSize = ndGlobalSize / ndLocalSize;
+            tmpSize = reducedSize * reducedDimSize;
+
             reduceKernel.setArg(0, static_cast<size_t>(ndLocalSize * sizeof(float)), nullptr);
             reduceKernel.setArg(1, inBuffer);
             reduceKernel.setArg(2, inDims);
@@ -146,6 +150,7 @@ cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t 
             queue.enqueueNDRangeKernel(reduceKernel, cl::NullRange, cl::NDRange(ndGlobalSize), cl::NDRange(ndLocalSize));
 
 
+            // NEEDS TO BE UP
             if (printInfo) {
                 cout << "tmpSize " << tmpSize << endl;
             }
@@ -166,9 +171,6 @@ cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t 
                 }
                 cout << endl;
             }
-            // NEEDS TO BE UP
-            tmpSize = ndGlobalSize / ndLocalSize;
-            tmpSize = reducedSize * reducedDimSize;
 
             inDims = outDims;
             outDims = (outDims == dims1) ? dims2 : dims1;
@@ -178,9 +180,8 @@ cl::Buffer reduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, size_t 
         if (printInfo) {
             vector<float> sumReduce(tmpSize);
             queue.enqueueReadBuffer(inBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
-            for (auto val : sumReduce) {
-                cout << val << " ";
-            }
+            tmpDims = getDims(tmpDims, {axis});
+            printArray(sumReduce, tmpDims);
             cout << endl;
         }
     }
@@ -206,7 +207,7 @@ int main() {
                      16, 17, 18};
                      
                      
-    const vector<uint> axes = {2};
+    const vector<uint> axes = {1};
     const float alpha = 1.0f;
 
     cout.precision(8);

@@ -60,16 +60,39 @@ __kernel void reduce_sum_ND(__local float* cache, __global float* input, __globa
     }
 
     if (local_id == 0) { 
-        int outPos = 0;
-        int outDimCtr = 1;
-        for (int i = numDims-1; i >= 0; i--) {
-            size_t dimSize = (i == axis) ? inDims[i] / num_groups : inDims[i];
-            outPos += ( (group_id / outDimCtr) % dimSize ) * outDimCtr;
-            outDimCtr *= dimSize;
-            
+        size_t newDimSize = next_power_of_2(inDims[axis]) / (local_size);
+
+        int traverseCount[64];
+        size_t dimensionsTraversed = dimension;
+        size_t positionInReducedDimension = partNo;
+        size_t outPos = 0;
+        size_t redDimCtr = 1;
+        size_t dimCtr = 1;
+
+        for (int i = numDims-1; i>= 0; i--) {
+            size_t dim = 1;
+            if (i == axis) {
+                dim = newDimSize;
+                outPos += partNo * dimCtr;
+            } else {
+                dim = inDims[i];
+                outPos += (dimension / redDimCtr) % dim * dimCtr;
+                redDimCtr *= dim;
+            }
+
+            dimCtr *= dim;
         }
-        output[outPos] = cache[0];
+
+        float max = cache[0];
+        float myVal = 13;
+
+        if ( group_id < N ) {
+            output[outPos] = max;
+        }
+        //output[outPos] = 1.0f * cache[local_id];
+        //output[outPos] = cache[0];
     }
+    barrier(CLK_GLOBAL_MEM_FENCE);
 }
 
 __kernel void reduce_max_ND(__local float* cache, __global float* input, __global size_t *inDims,
