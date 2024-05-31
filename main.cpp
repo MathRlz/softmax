@@ -120,7 +120,8 @@ ReduceResultT runReduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, s
     auto outDims = dims1;
     auto tmpDims = dims;
     for (auto axis : axes) {
-        size_t tmpSize = accumulate(dims.begin(), dims.end(), 1, multiplies<size_t>());
+        size_t tmpSize = accumulate(tmpDims.begin(), tmpDims.end(), 1, multiplies<size_t>());
+        tmpDims = getDims(tmpDims, {axis});
         size_t reducedDimSize = dims[axis];
         size_t reducedSize = tmpSize / reducedDimSize;
 
@@ -185,7 +186,6 @@ ReduceResultT runReduceKernel(cl::CommandQueue queue, cl::Kernel reduceKernel, s
         if (printInfo) {
             vector<float> sumReduce(tmpSize);
             queue.enqueueReadBuffer(inBuffer, CL_TRUE, 0, sumReduce.size() * sizeof(float), sumReduce.data());
-            tmpDims = getDims(tmpDims, {axis});
             printArray(sumReduce, tmpDims);
             cout << endl;
         }
@@ -251,7 +251,7 @@ int main() {
                      16, 17, 18};
                      
                      
-    const vector<uint> axes = {0};
+    const vector<uint> axes = {0, 1};
     const float alpha = 1.0f;
 
     cout.precision(8);
